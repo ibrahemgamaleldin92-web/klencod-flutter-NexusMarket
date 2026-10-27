@@ -836,3 +836,427 @@ class _NexusHomeState extends State<NexusHome> {
       ),
     );
   }
+    Widget buildCartPage() {
+    final entries = cart.entries.toList();
+
+    return Column(
+      children: [
+        sectionTitle('سلة المشتريات'),
+        if (entries.isEmpty)
+          const Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.shopping_cart_outlined,
+                    size: 64,
+                    color: muted,
+                  ),
+                  SizedBox(height: 14),
+                  Text(
+                    'السلة لسه فاضية',
+                    style: TextStyle(
+                      color: muted,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else ...[
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: entries.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final product = entries[index].key;
+                final quantity = entries[index].value;
+
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.shopping_bag_outlined,
+                        color: gold,
+                        size: 30,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              '${(product.price * quantity).toStringAsFixed(2)} ج.م',
+                              style: const TextStyle(
+                                color: gold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            changeQuantity(product, -1),
+                        icon: const Icon(
+                          Icons.remove_circle_outline,
+                        ),
+                      ),
+                      Text(
+                        '$quantity',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            changeQuantity(product, 1),
+                        icon: const Icon(
+                          Icons.add_circle_outline,
+                          color: gold,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'إجمالي المنتجات',
+                      style: TextStyle(color: muted),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${cartTotal.toStringAsFixed(2)} ج.م',
+                      style: const TextStyle(
+                        color: gold,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: checkout,
+                    icon: const Icon(
+                      Icons.shopping_cart_checkout,
+                    ),
+                    label: const Text('إتمام الطلب'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: gold,
+                      foregroundColor: background,
+                      padding: const EdgeInsets.all(15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> checkout() async {
+    if (cart.isEmpty) {
+      message('السلة فاضية');
+      return;
+    }
+
+    if (!storeOpen) {
+      message('المتجر مغلق حاليًا');
+      return;
+    }
+
+    String deliveryType = deliveryEnabled
+        ? 'توصيل للمنزل'
+        : 'استلام من المتجر';
+
+    if (deliveryEnabled && pickupEnabled) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: surface,
+          title: const Text('طريقة استلام الطلب'),
+          content: const Text(
+            'اختار الطريقة المناسبة ليك',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                'استلام من المتجر',
+              ),
+              child: const Text('استلام من المتجر'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                'توصيل للمنزل',
+              ),
+              child: const Text('دليفري'),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == null) return;
+      deliveryType = choice;
+    } else if (!deliveryEnabled && !pickupEnabled) {
+      message('الاستلام والتوصيل غير متاحين حاليًا');
+      return;
+    }
+
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final addressController = TextEditingController();
+
+    final needsAddress = deliveryType == 'توصيل للمنزل';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: surface,
+        title: const Text('بيانات الطلب'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                textDirection: TextDirection.rtl,
+                decoration: const InputDecoration(
+                  labelText: 'اسم العميل',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'رقم الموبايل',
+                ),
+              ),
+              if (needsAddress) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: addressController,
+                  textDirection: TextDirection.rtl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'عنوان التوصيل بالتفصيل',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Text(
+                'المنتجات: ${cartTotal.toStringAsFixed(2)} ج.م',
+              ),
+              if (needsAddress)
+                Text(
+                  'التوصيل: ${deliveryFee.toStringAsFixed(2)} ج.م',
+                ),
+              const SizedBox(height: 8),
+              Text(
+                'الإجمالي: ${(cartTotal + (needsAddress ? deliveryFee : 0)).toStringAsFixed(2)} ج.م',
+                style: const TextStyle(
+                  color: gold,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameController.text.trim().isEmpty ||
+                  phoneController.text.trim().isEmpty ||
+                  (needsAddress &&
+                      addressController.text.trim().isEmpty)) {
+                message('من فضلك أكمل البيانات المطلوبة');
+                return;
+              }
+
+              Navigator.pop(dialogContext, true);
+            },
+            child: const Text('تأكيد الطلب'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      orders.insert(
+        0,
+        MarketOrder(
+          items: cart.entries
+              .map(
+                (entry) => MapEntry(
+                  entry.key,
+                  entry.value,
+                ),
+              )
+              .toList(),
+          total: cartTotal +
+              (needsAddress ? deliveryFee : 0),
+          deliveryType: deliveryType,
+        ),
+      );
+      cart.clear();
+      page = 2;
+    });
+
+    message('تم تسجيل الطلب على هذا الجهاز');
+  }
+
+  Widget buildOrdersPage() {
+    return Column(
+      children: [
+        sectionTitle('الطلبات'),
+        Expanded(
+          child: orders.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.receipt_long_outlined,
+                        size: 64,
+                        color: muted,
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'لسه مفيش طلبات',
+                        style: TextStyle(color: muted),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: orders.length,
+                  itemBuilder: (context, index) {
+                    final order = orders[index];
+
+                    return Container(
+                      margin: const EdgeInsets.only(
+                        bottom: 12,
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: surface,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: gold.withValues(alpha: 0.15),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.receipt_long,
+                                color: gold,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'طلب رقم ${orders.length - index}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                order.status,
+                                style: const TextStyle(
+                                  color: green,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 24),
+                          ...order.items.map(
+                            (item) => Padding(
+                              padding:
+                                  const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(item.key.name),
+                                  ),
+                                  Text('×${item.value}'),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            order.deliveryType,
+                            style: const TextStyle(color: muted),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              const Text('الإجمالي'),
+                              const Spacer(),
+                              Text(
+                                '${order.total.toStringAsFixed(2)} ج.م',
+                                style: const TextStyle(
+                                  color: gold,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
