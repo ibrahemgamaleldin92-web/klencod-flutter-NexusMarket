@@ -1,763 +1,651 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const TaskMasterApp());
+void main() {
+  runApp(const NexusMarketApp());
 }
 
-class AppTheme {
-  static const Color background = Color(0xFF0D1117);
-  static const Color surface = Color(0xFF161B22);
-  static const Color surfaceAlt = Color(0xFF21262D);
-  static const Color border = Color(0xFF30363D);
-  static const Color primary = Color(0xFF1F6FEB);
-  static const Color primaryLight = Color(0xFF58A6FF);
-  static const Color success = Color(0xFF2EA043);
-  static const Color danger = Color(0xFFCF222E);
-  static const Color warning = Color(0xFFD29922);
-  static const Color textPrimary = Color(0xFFE6EDF3);
-  static const Color textMuted = Color(0xFF8B949E);
+const Color gold = Color(0xFFE7BE70);
+const Color background = Color(0xFF0B0D11);
+const Color surface = Color(0xFF151922);
+const Color muted = Color(0xFF9299A8);
 
-  static ThemeData get dark => ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: background,
-        colorScheme: const ColorScheme.dark(
-          primary: primary,
-          secondary: primaryLight,
-          surface: surface,
-          error: danger,
-          onPrimary: Colors.white,
-          onSurface: textPrimary,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: background,
-          elevation: 0,
-          centerTitle: true,
-          titleTextStyle: TextStyle(
-            color: textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: surfaceAlt,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: border),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: primaryLight, width: 1.5),
-          ),
-        ),
-      );
-}
+class Product {
+  String name;
+  double price;
+  String category;
+  bool available;
+  int quantity;
 
-class Task {
-  final String id;
-  String title;
-  bool done;
-  final DateTime createdAt;
-
-  Task({
-    required this.id,
-    required this.title,
-    this.done = false,
-    required this.createdAt,
+  Product({
+    required this.name,
+    required this.price,
+    required this.category,
+    this.available = true,
+    this.quantity = 0,
   });
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'done': done,
-        'createdAt': createdAt.toIso8601String(),
-      };
-
-  factory Task.fromJson(Map<String, dynamic> json) => Task(
-        id: json['id'] as String,
-        title: json['title'] as String,
-        done: json['done'] as bool? ?? false,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-      );
 }
 
-class TaskMasterApp extends StatelessWidget {
-  const TaskMasterApp({super.key});
+class MarketOrder {
+  final List<MapEntry<Product, int>> items;
+  final double total;
+  final String deliveryType;
+  String status;
+
+  MarketOrder({
+    required this.items,
+    required this.total,
+    required this.deliveryType,
+    this.status = 'طلب جديد',
+  });
+}
+
+class NexusMarketApp extends StatelessWidget {
+  const NexusMarketApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NexusMarket',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
-      home: const TaskHomePage(),
-    );
-  }
-}
-
-enum TaskFilter { all, active, completed }
-
-class TaskHomePage extends StatefulWidget {
-  const TaskHomePage({super.key});
-
-  @override
-  State<TaskHomePage> createState() => _TaskHomePageState();
-}
-
-class _TaskHomePageState extends State<TaskHomePage>
-    with SingleTickerProviderStateMixin {
-  static const String _storageKey = 'klencod_tasks_v1';
-
-  final List<Task> _tasks = [];
-  final TextEditingController _searchController = TextEditingController();
-  TaskFilter _filter = TaskFilter.all;
-  String _searchQuery = '';
-  bool _loading = true;
-  late AnimationController _fadeController;
-
-  @override
-  void initState() {
-    super.initState();
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _loadTasks();
-  }
-
-  @override
-  void dispose() {
-    _fadeController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadTasks() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final data = prefs.getString(_storageKey);
-      if (data != null && data.isNotEmpty) {
-        final list = jsonDecode(data) as List<dynamic>;
-        _tasks.clear();
-        _tasks.addAll(list.map((e) => Task.fromJson(e as Map<String, dynamic>)));
-      }
-    } catch (_) {}
-    setState(() => _loading = false);
-    _fadeController.forward();
-  }
-
-  Future<void> _saveTasks() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final data = jsonEncode(_tasks.map((t) => t.toJson()).toList());
-      await prefs.setString(_storageKey, data);
-    } catch (_) {}
-  }
-
-  void _addTask(String title) {
-    final trimmed = title.trim();
-    if (trimmed.isEmpty) return;
-    setState(() {
-      _tasks.insert(
-        0,
-        Task(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          title: trimmed,
-          createdAt: DateTime.now(),
+      title: 'NEXUS MARKET',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: background,
+        colorScheme: const ColorScheme.dark(
+          primary: gold,
+          surface: surface,
         ),
-      );
+        useMaterial3: true,
+        fontFamily: 'sans-serif',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: background,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: surface,
+          labelStyle: const TextStyle(color: muted),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+      home: const NexusHome(),
+    );
+  }
+}
+
+class NexusHome extends StatefulWidget {
+  const NexusHome({super.key});
+
+  @override
+  State<NexusHome> createState() => _NexusHomeState();
+}
+
+class _NexusHomeState extends State<NexusHome> {
+  int page = 0;
+
+  String marketName = 'NEXUS MARKET';
+  String marketAddress = 'متجرك المفضل';
+
+  bool deliveryEnabled = true;
+  double deliveryFee = 15;
+  bool pickupEnabled = true;
+  bool storeOpen = true;
+
+  String search = '';
+  String category = 'الكل';
+
+  final List<String> categories = [
+    'الكل',
+    'ألبان',
+    'مشروبات',
+    'بقالة',
+    'منظفات',
+    'سناكس',
+  ];
+
+  final List<Product> products = [
+    Product(
+      name: 'لبن كامل الدسم',
+      price: 45,
+      category: 'ألبان',
+      available: true,
+    ),
+    Product(
+      name: 'سكر أبيض',
+      price: 35,
+      category: 'بقالة',
+      available: true,
+    ),
+    Product(
+      name: 'زيت طعام',
+      price: 75,
+      category: 'بقالة',
+      available: false,
+    ),
+    Product(
+      name: 'مياه معدنية',
+      price: 10,
+      category: 'مشروبات',
+      available: true,
+    ),
+    Product(
+      name: 'مكرونة',
+      price: 15,
+      category: 'بقالة',
+      available: true,
+    ),
+    Product(
+      name: 'شيبسي',
+      price: 10,
+      category: 'سناكس',
+      available: true,
+    ),
+  ];
+
+  final Map<Product, int> cart = {};
+  final List<MarketOrder> orders = [];
+
+  List<Product> get filteredProducts {
+    return products.where((p) {
+      final matchesSearch = p.name.contains(search.trim());
+      final matchesCategory =
+          category == 'الكل' || p.category == category;
+
+      return matchesSearch && matchesCategory;
+    }).toList();
+  }
+
+  int get cartCount {
+    return cart.values.fold(0, (sum, quantity) => sum + quantity);
+  }
+
+  double get cartTotal {
+    return cart.entries.fold(
+      0,
+      (sum, entry) => sum + entry.key.price * entry.value,
+    );
+  }
+
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, textAlign: TextAlign.center),
+        backgroundColor: surface,
+      ),
+    );
+  }
+
+  void addToCart(Product product) {
+    if (!storeOpen) {
+      showMessage('المتجر مغلق حاليًا');
+      return;
+    }
+
+    if (!product.available) {
+      showMessage('المنتج غير متوفر');
+      return;
+    }
+
+    setState(() {
+      cart[product] = (cart[product] ?? 0) + 1;
     });
-    _saveTasks();
-    HapticFeedback.lightImpact();
-    _showSnack('تمت إضافة المهمة', success: true);
+
+    showMessage('تمت إضافة ${product.name} للسلة');
   }
 
-  void _toggleTask(Task task) {
-    setState(() => task.done = !task.done);
-    _saveTasks();
-    HapticFeedback.selectionClick();
+  void changeCartQuantity(Product product, int change) {
+    setState(() {
+      final newQuantity = (cart[product] ?? 0) + change;
+
+      if (newQuantity <= 0) {
+        cart.remove(product);
+      } else {
+        cart[product] = newQuantity;
+      }
+    });
   }
 
-  void _deleteTask(Task task) {
-    final index = _tasks.indexOf(task);
-    if (index == -1) return;
-    setState(() => _tasks.removeAt(index));
-    _saveTasks();
-    _showSnack(
-      'تم حذف المهمة',
-      actionLabel: 'تراجع',
-      onAction: () {
-        setState(() => _tasks.insert(index, task));
-        _saveTasks();
+  Future<void> editMarket() async {
+    final nameController = TextEditingController(text: marketName);
+    final addressController =
+        TextEditingController(text: marketAddress);
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: surface,
+          title: const Text('بيانات المتجر'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                textDirection: TextDirection.rtl,
+                decoration: const InputDecoration(
+                  labelText: 'اسم السوبر ماركت',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: addressController,
+                textDirection: TextDirection.rtl,
+                decoration: const InputDecoration(
+                  labelText: 'العنوان أو وصف المتجر',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (nameController.text.trim().isEmpty) return;
+
+                setState(() {
+                  marketName = nameController.text.trim();
+                  marketAddress = addressController.text.trim();
+                });
+
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        );
       },
     );
   }
 
-  void _clearCompleted() {
-    final completed = _tasks.where((t) => t.done).toList();
-    if (completed.isEmpty) {
-      _showSnack('لا توجد مهام مكتملة');
+  Future<void> addOrEditProduct({Product? product}) async {
+    final nameController =
+        TextEditingController(text: product?.name ?? '');
+
+    final priceController = TextEditingController(
+      text: product == null ? '' : product.price.toString(),
+    );
+
+    String selectedCategory = product?.category ?? 'بقالة';
+
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: surface,
+              title: Text(
+                product == null ? 'إضافة منتج' : 'تعديل المنتج',
+              ),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        textDirection: TextDirection.rtl,
+                        decoration: const InputDecoration(
+                          labelText: 'اسم المنتج',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'اكتب اسم المنتج';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: priceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'السعر بالجنيه',
+                        ),
+                        validator: (value) {
+                          final price = double.tryParse(value ?? '');
+
+                          if (price == null || price <= 0) {
+                            return 'اكتب سعرًا صحيحًا';
+                          }
+
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        decoration: const InputDecoration(
+                          labelText: 'القسم',
+                        ),
+                        items: categories
+                            .where((c) => c != 'الكل')
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(c),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() {
+                              selectedCategory = value;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('إلغاء'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
+
+                    final name = nameController.text.trim();
+                    final price =
+                        double.parse(priceController.text.trim());
+
+                    setState(() {
+                      if (product == null) {
+                        products.add(
+                          Product(
+                            name: name,
+                            price: price,
+                            category: selectedCategory,
+                          ),
+                        );
+                      } else {
+                        product.name = name;
+                        product.price = price;
+                        product.category = selectedCategory;
+                      }
+                    });
+
+                    Navigator.pop(dialogContext);
+                    showMessage('تم حفظ بيانات المنتج');
+                  },
+                  child: const Text('حفظ'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> showProductOptions(Product product) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: surface,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit, color: gold),
+                title: const Text('تعديل المنتج'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  addOrEditProduct(product: product);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  product.available
+                      ? Icons.remove_shopping_cart
+                      : Icons.check_circle,
+                  color: gold,
+                ),
+                title: Text(
+                  product.available
+                      ? 'تحديد كغير متوفر'
+                      : 'تحديد كمتوفر',
+                ),
+                onTap: () {
+                  setState(() {
+                    product.available = !product.available;
+                  });
+
+                  Navigator.pop(sheetContext);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('حذف المنتج'),
+                onTap: () {
+                  setState(() {
+                    products.remove(product);
+                    cart.remove(product);
+                  });
+
+                  Navigator.pop(sheetContext);
+                  showMessage('تم حذف المنتج');
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> checkout() async {
+    if (cart.isEmpty) {
+      showMessage('السلة فارغة');
       return;
     }
-    showDialog(
-      context: context,
-      builder: (ctx) => _buildConfirmDialog(
-        ctx,
-        title: 'حذف المهام المكتملة',
-        message: 'سيتم حذف ${completed.length} مهمة مكتملة. لا يمكن التراجع.',
-        onConfirm: () {
-          setState(() => _tasks.removeWhere((t) => t.done));
-          _saveTasks();
-          Navigator.pop(ctx);
-          _showSnack('تم حذف ${completed.length} مهمة', success: true);
-        },
-      ),
-    );
-  }
 
-  void _showSnack(String message,
-      {String? actionLabel, VoidCallback? onAction, bool success = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              success ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-              color: success ? AppTheme.success : AppTheme.textPrimary,
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(color: AppTheme.textPrimary),
+    if (!storeOpen) {
+      showMessage('المتجر مغلق حاليًا');
+      return;
+    }
+
+    String method = deliveryEnabled ? 'دليفري' : 'استلام من المتجر';
+
+    if (!deliveryEnabled && !pickupEnabled) {
+      showMessage('الطلبات غير متاحة حاليًا');
+      return;
+    }
+
+    final Map<Product, int> items = Map.of(cart);
+    final double subtotal = cartTotal;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: surface,
+              title: const Text('تأكيد الطلب'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('قيمة المنتجات: ${subtotal.toStringAsFixed(2)} جنيه'),
+                  const SizedBox(height: 12),
+                  if (deliveryEnabled)
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'دليفري (+${deliveryFee.toStringAsFixed(2)} جنيه)',
+                      ),
+                      value: 'دليفري',
+                      groupValue: method,
+                      onChanged: (value) {
+                        setDialogState(() => method = value!);
+                      },
+                    ),
+                  if (pickupEnabled)
+                    RadioListTile<String>(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('استلام من المتجر'),
+                      value: 'استلام من المتجر',
+                      groupValue: method,
+                      onChanged: (value) {
+                        setDialogState(() => method = value!);
+                      },
+                    ),
+                ],
               ),
-            ),
-          ],
-        ),
-        backgroundColor: AppTheme.surfaceAlt,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
-        action: actionLabel != null
-            ? SnackBarAction(
-                label: actionLabel,
-                textColor: AppTheme.primaryLight,
-                onPressed: onAction ?? () {},
-              )
-            : null,
-      ),
-    );
-  }
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('رجوع'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (method == 'دليفري' && !deliveryEnabled) return;
+                    if (method == 'استلام من المتجر' && !pickupEnabled) {
+                      return;
+                    }
 
-  Widget _buildConfirmDialog(
-    BuildContext ctx, {
-    required String title,
-    required String message,
-    required VoidCallback onConfirm,
-  }) {
-    return AlertDialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: Text(title, style: const TextStyle(color: AppTheme.textPrimary)),
-      content: Text(message, style: const TextStyle(color: AppTheme.textMuted)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('إلغاء',
-              style: TextStyle(color: AppTheme.textMuted)),
-        ),
-        TextButton(
-          onPressed: onConfirm,
-          child: const Text('تأكيد',
-              style: TextStyle(
-                  color: AppTheme.danger, fontWeight: FontWeight.bold)),
-        ),
-      ],
-    );
-  }
+                    setState(() {
+                      orders.insert(
+                        0,
+                        MarketOrder(
+                          items: items.entries
+                              .map((e) => MapEntry(e.key, e.value))
+                              .toList(),
+                          total: subtotal +
+                              (method == 'دليفري' ? deliveryFee : 0),
+                          deliveryType: method,
+                        ),
+                      );
 
-  void _openAddDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
-          children: const [
-            Icon(Icons.add_task_rounded, color: AppTheme.primaryLight),
-            SizedBox(width: 10),
-            Text('مهمة جديدة',
-                style: TextStyle(color: AppTheme.textPrimary)),
-          ],
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (v) {
-            _addTask(v);
-            Navigator.pop(ctx);
+                      cart.clear();
+                    });
+
+                    Navigator.pop(dialogContext);
+                    showMessage('تم تسجيل الطلب بنجاح');
+                  },
+                  child: const Text('تأكيد'),
+                ),
+              ],
+            );
           },
-          decoration: const InputDecoration(
-            hintText: 'اكتب المهمة...',
-            prefixIcon: Icon(Icons.edit_rounded),
-          ),
-          style: const TextStyle(color: AppTheme.textPrimary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء',
-                style: TextStyle(color: AppTheme.textMuted)),
-          ),
-          FilledButton(
-            onPressed: () {
-              _addTask(controller.text);
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
+        );
+      },
     );
-  }
-
-  List<Task> get _visibleTasks {
-    Iterable<Task> result = _tasks;
-    if (_filter == TaskFilter.active) {
-      result = result.where((t) => !t.done);
-    } else if (_filter == TaskFilter.completed) {
-      result = result.where((t) => t.done);
-    }
-    if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
-      result = result.where((t) => t.title.toLowerCase().contains(q));
-    }
-    return result.toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: AppTheme.primaryLight),
-        ),
-      );
-    }
-
-    final visible = _visibleTasks;
-    final total = _tasks.length;
-    final completed = _tasks.where((t) => t.done).length;
-    final active = total - completed;
-    final progress = total == 0 ? 0.0 : completed / total;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('NexusMarket'),
-        actions: [
-          if (completed > 0)
-            IconButton(
-              tooltip: 'حذف المكتملة',
-              icon: const Icon(Icons.delete_sweep_rounded),
-              onPressed: _clearCompleted,
-            ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddDialog,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('مهمة جديدة',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
-      body: Column(
-        children: [
-          _buildHeader(total, completed, active, progress),
-          _buildSearchBar(),
-          _buildFilters(total, active, completed),
-          Expanded(
-            child: visible.isEmpty
-                ? _buildEmptyState()
-                : _buildTaskList(visible),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(int total, int completed, int active, double progress) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1F6FEB), Color(0xFF0D419D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primary.withOpacity(0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.task_alt_rounded,
-                    color: Colors.white, size: 28),
-                const SizedBox(width: 10),
-                Text(
-                  total == 0 ? 'لا توجد مهام بعد' : 'مهامك',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _statChip('الإجمالي', total, Colors.white),
-                _statChip('نشطة', active, AppTheme.warning),
-                _statChip('مكتملة', completed, AppTheme.success),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: progress),
-                duration: const Duration(milliseconds: 600),
-                builder: (_, value, __) => LinearProgressIndicator(
-                  value: value,
-                  minHeight: 8,
-                  backgroundColor: Colors.white24,
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${(progress * 100).toStringAsFixed(0)}% إنجاز',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _statChip(String label, int value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          Text(
-            '$value',
-            style: TextStyle(
-              color: color,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: TextField(
-        controller: _searchController,
-        onChanged: (v) => setState(() => _searchQuery = v),
-        style: const TextStyle(color: AppTheme.textPrimary),
-        decoration: InputDecoration(
-          hintText: 'بحث في المهام...',
-          prefixIcon: const Icon(Icons.search_rounded,
-              color: AppTheme.textMuted),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear_rounded,
-                      color: AppTheme.textMuted),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                )
-              : null,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilters(int total, int active, int completed) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          _filterChip('الكل', TaskFilter.all, total),
-          const SizedBox(width: 8),
-          _filterChip('نشطة', TaskFilter.active, active),
-          const SizedBox(width: 8),
-          _filterChip('مكتملة', TaskFilter.completed, completed),
-        ],
-      ),
-    );
-  }
-
-  Widget _filterChip(String label, TaskFilter filter, int count) {
-    final selected = _filter == filter;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _filter = filter),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? AppTheme.primary : AppTheme.surfaceAlt,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? AppTheme.primaryLight : AppTheme.border,
-            ),
-          ),
-          child: Column(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
             children: [
-              Text(
-                '$count',
-                style: TextStyle(
-                  color: selected ? Colors.white : AppTheme.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: gold.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: gold.withValues(alpha: 0.4)),
+                ),
+                child: const Icon(
+                  Icons.shopping_cart_rounded,
+                  color: gold,
                 ),
               ),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? Colors.white70 : AppTheme.textMuted,
-                  fontSize: 11,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      marketName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text(
+                      'متجرك في مكان واحد',
+                      style: TextStyle(fontSize: 11, color: muted),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTaskList(List<Task> visible) {
-    return FadeTransition(
-      opacity: _fadeController,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-        itemCount: visible.length,
-        itemBuilder: (context, index) {
-          final task = visible[index];
-          return _buildTaskItem(task);
-        },
-      ),
-    );
-  }
-
-  Widget _buildTaskItem(Task task) {
-    return Dismissible(
-      key: ValueKey(task.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
-          color: AppTheme.danger,
-          borderRadius: BorderRadius.circular(14),
+        body: IndexedStack(
+          index: page,
+          children: [
+            buildCustomerPage(),
+            buildOwnerPage(),
+            buildOrdersPage(),
+          ],
         ),
-        alignment: Alignment.centerRight,
-        child: const Icon(Icons.delete_rounded,
-            color: Colors.white, size: 26),
-      ),
-      confirmDismiss: (_) async {
-        _deleteTask(task);
-        return false;
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: task.done
-                ? AppTheme.success.withOpacity(0.4)
-                : AppTheme.border,
-          ),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => _toggleTask(task),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: task.done
-                          ? AppTheme.success
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: task.done
-                            ? AppTheme.success
-                            : AppTheme.textMuted,
-                        width: 2,
-                      ),
-                    ),
-                    child: task.done
-                        ? const Icon(Icons.check_rounded,
-                            color: Colors.white, size: 18)
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task.title,
-                          style: TextStyle(
-                            color: task.done
-                                ? AppTheme.textMuted
-                                : AppTheme.textPrimary,
-                            fontSize: 15,
-                            decoration: task.done
-                                ? TextDecoration.lineThrough
-                                : null,
-                            decorationColor: AppTheme.textMuted,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatDate(task.createdAt),
-                          style: const TextStyle(
-                            color: AppTheme.textMuted,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'حذف',
-                    icon: const Icon(Icons.delete_outline_rounded,
-                        color: AppTheme.textMuted),
-                    onPressed: () => _deleteTask(task),
-                  ),
-                ],
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: page,
+          backgroundColor: surface,
+          indicatorColor: gold.withValues(alpha: 0.15),
+          onDestinationSelected: (index) {
+            setState(() => page = index);
+          },
+          destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.storefront_outlined),
+              selectedIcon: Icon(Icons.storefront, color: gold),
+              label: 'العميل',
+            ),
+            const NavigationDestination(
+              icon: Icon(Icons.dashboard_outlined),
+              selectedIcon: Icon(Icons.dashboard, color: gold),
+              label: 'إدارة المتجر',
+            ),
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: orders.isNotEmpty,
+                label: Text('${orders.length}'),
+                child: const Icon(Icons.receipt_long_outlined),
               ),
+              selectedIcon: const Icon(
+                Icons.receipt_long,
+                color: gold,
+              ),
+              label: 'الطلبات',
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    if (diff.inMinutes < 1) return 'الآن';
-    if (diff.inHours < 1) return 'منذ ${diff.inMinutes} دقيقة';
-    if (diff.inDays < 1) return 'منذ ${diff.inHours} ساعة';
-    if (diff.inDays == 1) return 'أمس';
-    return 'منذ ${diff.inDays} يوم';
-  }
-
-  Widget _buildEmptyState() {
-    final String message;
-    final IconData icon;
-    if (_searchQuery.isNotEmpty) {
-      message = 'لا توجد نتائج للبحث';
-      icon = Icons.search_off_rounded;
-    } else if (_filter == TaskFilter.completed) {
-      message = 'لا توجد مهام مكتملة بعد';
-      icon = Icons.check_circle_outline_rounded;
-    } else if (_filter == TaskFilter.active) {
-      message = 'كل المهام مكتملة!';
-      icon = Icons.celebration_rounded;
-    } else {
-      message = 'ابدأ بإضافة مهمتك الأولى';
-      icon = Icons.playlist_add_rounded;
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceAlt,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.border),
+  Widget buildCustomerPage() {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF242018), Color(0xFF171922)],
             ),
-            child: Icon(icon, size: 56, color: AppTheme.primaryLight),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            message,
-            style: const TextStyle(
-              color: AppTheme.textMuted,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'استخدم الزر أدناه للبدء',
-            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-}
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: gold.withValues
